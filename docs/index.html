@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>1731720764</title>
+		<meta charset="utf-8">
+		<meta name="robots" content="noindex,nofollow">
+		<link rel="icon" href="data:;base64,=">
+		<meta name="viewport" content="width=device-width,user-scalable=no,minimum-scale=1.0,maximum-scale=1.0">
+		<style>
+			
+			* {
+				margin:0;
+				padding:0;
+				-webkit-user-select:none;
+				-moz-user-select:none;
+				-ms-user-select:none;
+			}
+			
+			body {
+				background:#000;
+				width:100dvw;
+				height:100dvh;
+				overflow:hidden;
+			}
+			
+		</style>
+	</head>
+	<body>
+		<script src="./twgl.min.js"></script>
+		<script src="Data.js"></script>
+		<script src="Params.js"></script>
+		<script type="module">
+			
+			const width = 3840;
+			const height = 2160;
+			
+			const canvas = document.createElement("canvas");
+			Object.assign(canvas,{width:width,height:height});
+			Object.assign(canvas.style,{"vertical-align":"top","outline":"1px solid #333"});
+			
+			const div = document.createElement("div");
+			Object.assign(div.style,{"display":"flex","width":"100vw","height":"100dvh"});
+			div.appendChild(canvas);
+			
+			const gl = canvas.getContext("webgl",{antialias:true});
+			const type = gl.UNSIGNED_INT;
+			gl.getExtension("OES_element_index_uint");
+			
+			const resize = (e)=>{
+				const sx = window.innerWidth/width;
+				const sy = window.innerHeight/height;
+				if(sx<sy) {
+					Object.assign(canvas.style,{"width":"100dvw","height":"auto","margin":"auto 0"});
+				}
+				else {
+					Object.assign(canvas.style,{"width":"auto","height":"100dvh","margin":"0 auto"});
+				}
+			}
+			
+			let tid = 0;
+			window.addEventListener("resize",(e)=>{
+				if(tid) clearTimeout(tid);
+				tid = setTimeout((e)=>resize(),15);
+			});
+			
+			const vert = `
+				precision mediump float;
+				uniform mat4 PM;
+				uniform mat4 TM;
+				uniform float thickness;
+				uniform vec2 resolution;
+				attribute vec3 vertices;
+				attribute vec3 targets;
+				attribute float types;
+				varying float v_discard;
+				void main() {
+					float HW = resolution.x*0.5;
+					float HH = resolution.y*0.5;
+					vec4 vertice = PM*TM*vec4(vertices,1.0);
+					vec4 target = PM*TM*vec4(targets,1.0);
+					const float N = -0.01;
+					if(vertice.z>=N&&target.z>=N) {
+						float scale = (vertice.z)/(HW*PM[0][0]);
+						vec2 point = vec2((vertice.x/vertice.w)*(HW*scale),(vertice.y/vertice.w)*(HH*scale));
+						vec2 normal = vec2((target.x/target.w)*(HW*scale)-point.x,(target.y/target.w)*(HH*scale)-point.y);
+					
+						if(length(normal)!=0.0) {
+							normal/=length(normal);
+							normal*=thickness*0.5*scale;
+					
+							float x = point.x-normal.y*types;
+							float y = point.y+normal.x*types;
+					
+							x = (x/(HW*scale))*vertice.w;
+							y = (y/(HH*scale))*vertice.w;
+					
+							vec4 xyzw = vec4(x,y,vertice.z,vertice.w);
+					
+							const float M = 0.5;
+							if(xyzw.x*M>=-xyzw.w&&xyzw.y*M>=-xyzw.w&&xyzw.x*M<=xyzw.w&&xyzw.y*M<=xyzw.w){
+								v_discard = 0.0;
+								gl_Position = xyzw;
+							}
+							else {
+								v_discard = 1.0;
+							}
+						}
+						else {
+							v_discard = 1.0;
+						}
+					}
+					else {
+						v_discard = 1.0;
+					}
+				}`
+			const frag = `
+				precision mediump float;
+				varying float v_discard;
+				void main() { 
+					if(v_discard>0.5) {
+						discard;
+					}
+					else {
+						gl_FragColor = vec4(1.0);
+					}
+				}`
+			
+			const program = twgl.createProgramFromSources(gl,[vert,frag]);
+			if(program) {
+				
+				const vertices = [];
+				const targets = [];
+				const types = [];
+				const indices = [];
+				
+				let f = 0;
+				for(var n=0; n<Data.length; n+=6) {
+										
+					const a = [
+						Data[n+0],
+						Data[n+1],
+						Data[n+2],
+					];
+					
+					const b = [
+						Data[n+3],
+						Data[n+4],
+						Data[n+5],
+					];
+					
+					vertices.push(a[0]); vertices.push(a[1]); vertices.push(a[2]);
+					vertices.push(a[0]); vertices.push(a[1]); vertices.push(a[2]);
+					vertices.push(b[0]); vertices.push(b[1]); vertices.push(b[2]);
+					vertices.push(b[0]); vertices.push(b[1]); vertices.push(b[2]);
+					
+					targets.push(b[0]); targets.push(b[1]); targets.push(b[2]);
+					targets.push(b[0]); targets.push(b[1]); targets.push(b[2]);
+					targets.push(a[0]); targets.push(a[1]); targets.push(a[2]);
+					targets.push(a[0]); targets.push(a[1]); targets.push(a[2]);
+					
+					types.push(-1);
+					types.push(1);
+					types.push(1);
+					types.push(-1);
+					
+					indices.push(f+0); indices.push(f+1); indices.push(f+2);
+					indices.push(f+1); indices.push(f+2); indices.push(f+3);
+					
+					f+=4;
+				};
+				
+				const programInfo = twgl.createProgramInfoFromProgram(gl,program);
+				const bufferInfo = twgl.createBufferInfoFromArrays(gl,{
+					vertices:{ numComponents:3, data:vertices },
+					targets:{ numComponents:3, data:targets },
+					types:{ numComponents:1, data:types },
+					indices:{ numComponents:3, data:new Uint32Array(indices) }
+				});
+				
+				const PM = [1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0];
+				const TM = [1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0];
+				
+				const uniforms = {
+					PM:PM,
+					TM:TM,
+					resolution:[width,height],
+					thickness:1
+				};
+				
+				const totalFrame = 30*6;
+				let frame = 0; 
+				
+				const draw = ()=>{
+					
+					const wet = (Math.cos(Math.PI*2.0*(frame/totalFrame))+1.0)*0.5;
+					const dry = 1.0 - wet;
+										
+					for(var k=0; k<16; k++) {
+						PM[k] = Paramas[0][0][k]*wet + Paramas[1][0][k]*dry;
+						TM[k] = Paramas[0][1][k]*wet + Paramas[1][1][k]*dry;
+					}
+					uniforms.PM = PM;
+					uniforms.TM = TM;
+					
+					const bounds = canvas.getBoundingClientRect();
+					let thickness = 6.5;
+					uniforms.thickness = thickness;
+
+					gl.viewport(0,0,width,height);
+					gl.enable(gl.DEPTH_TEST);
+					gl.clearColor(0,0,0,0);
+					gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+					
+					gl.useProgram(program);
+					twgl.setBuffersAndAttributes(gl,programInfo,bufferInfo);
+					twgl.setUniforms(programInfo,uniforms);
+					gl.drawElements(gl.TRIANGLES,bufferInfo.numElements,type,0);
+										
+					if(++frame>=totalFrame) frame = 0;
+				};
+				
+				resize();
+				draw();
+				setInterval(draw,33);
+				document.body.appendChild(div);
+			}
+		</script>
+	</body>
+</html>
